@@ -69,9 +69,26 @@ Function Add-TvDbSeries() {
     $data = Get-TvDbSeries -Id $Id  -WithEpisodes $true
     if ($data -ne $null) {
         #Store the show
-        $data.Series | Where-Object { (Test-Path ("tvdb:\Series\" + $_.id)) -eq $false } |Select-Object "id", "status", @{Name="title"; Expression={$_.SeriesName}}, @{Name="watching"; Expression={ $true }}|New-Item tvdb:\Series |Out-Null
+        $data.Series `
+        | Where-Object {
+            (Test-Path ("tvdb:\Series\" + $_.id)) -eq $false
+        } `
+        | Select-Object `
+            "id", `
+            "status", `
+            @{
+                Name="title";
+                Expression={ $_.SeriesName }
+            }, `
+            @{
+                Name="watching";
+                Expression={ $true }
+            } `
+        | New-Item tvdb:\Series `
+        | Out-Null
+
         #store episodes
-        $data.Episode| Store-TvDbEpisode
+        $data.Episode | Store-TvDbEpisode
     }
     
 }
@@ -85,12 +102,19 @@ Function Store-TvDbEpisode() {
         $episode
     )
     Process {
-        $h = @{ id = $episode.id; seriesid = $episode.seriesid; SeasonNumber = $episode.SeasonNumber; title=$episode.EpisodeName; EpisodeNumber=$episode.EpisodeNumber; FirstAired=[string]$episode.FirstAired }
+        $data = @{
+            id = $episode.id;
+            seriesid = $episode.seriesid;
+            SeasonNumber = $episode.SeasonNumber;
+            title = $episode.EpisodeName;
+            EpisodeNumber = $episode.EpisodeNumber;
+            FirstAired = [string]$episode.FirstAired
+        }
         if ((Test-Path ("tvdb:\Episodes\" + $episode.id)) -eq $false) {
-            $h.watched = $false
-            New-Item -Path tvdb:\Episodes -Value $h | Out-Null
+            $data.watched = $false
+            New-Item -Path tvdb:\Episodes -Value $data | Out-Null
         } else {
-            Set-Item -Path ("tvdb:\Episodes\" + $episode.id) -Value $h |Out-Null
+            Set-Item -Path ("tvdb:\Episodes\" + $episode.id) -Value $data |Out-Null
         }
     }
 }
@@ -126,7 +150,9 @@ function Set-Watched() {
     if ($Episode -gt -1) {
         $filter += " and EpisodeNumber=$Episode"
     }
-    Set-Item tvdb:\Episodes -Filter $filter -Value @{ watched=$Value }
+    Set-Item tvdb:\Episodes `
+        -Filter $filter `
+        -Value @{ watched=$Value }
 }
 
 #.Synopsis
@@ -137,7 +163,12 @@ Function Get-TvDbDatabase() {
     }
     Import-Module Sqlite
     $file = Get-TvDbDataPath "database.sqlite"
-    New-PSDrive -name tvdb -PSProvider SQLite -root "Data Source=$file" -Scope Global |Out-Null
+    New-PSDrive `
+        -name tvdb `
+        -PSProvider SQLite `
+        -root "Data Source=$file" `
+        -Scope Global `
+    | Out-Null
 }
 
 #.Synopsis
@@ -210,7 +241,10 @@ function Get-TvDbEntry() {
 #.Synopsis 
 # Retreives series information from the server
 function Get-TvDbSeries($Id, $Language = 'en', $WithEpisodes = $false) {
-    Get-TvDbEntry -EntryType @{$true='seriesWithEpisodes'; $false='series'}[$WithEpisodes] -Id $Id -Language $Language
+    Get-TvDbEntry `
+        -EntryType @{$true='seriesWithEpisodes'; $false='series'}[$WithEpisodes] `
+        -Id $Id `
+        -Language $Language
 }
 
 #.Synopsis
@@ -228,22 +262,30 @@ function Update-TvDbSeries() {
         [String]
         $period = "month"
     )
-    $api_key = Get-TvDbApiKey
-    [xml]$response = Download-TvDb ("$api_key/updates/updates_" + $period + ".xml")
-    $response.Data.Episode | ForEach-Object -Begin {
-        $count = $response.Data.Episode.Count; $i=0;
-        if ($count -eq 0) {
-            break
-        }
-    } -Process {
-        Write-Progress -activity "Parsing Episodes" -status "Complete $i from $count"  -PercentComplete (($i / $count)  * 100);
-        $i++;
 
-        if((Test-Path tvdb:\Series\$_.Series) -eq $true) {
-            $episode = (Get-TvDbEpisode $_.id).Data.Episode
-            Store-TvDbEpisode $episode
+    $api_key = Get-TvDbApiKey
+    [xml]$response = Download-TvDb "$api_key/updates/updates_$period.xml"
+    $response.Data.Episode `
+    | ForEach-Object `
+        -Begin {
+            $count = $response.Data.Episode.Count
+            $i=0
+            if ($count -eq 0) {
+                break
+            }
+        } `
+        -Process {
+            Write-Progress `
+                -activity "Parsing Episodes" `
+                -status "Complete $i from $count"  `
+                -PercentComplete (($i / $count)  * 100);
+
+            $i++;
+            if((Test-Path tvdb:\Series\$_.Series) -eq $true) {
+                $episode = (Get-TvDbEpisode $_.id).Data.Episode
+                Store-TvDbEpisode $episode
+            }
         }
-    }
 }
 
 #.Synopsis
@@ -258,8 +300,20 @@ function Search-TvShow($title) {
 # Re-initialize database structure. Destroys all current data
 Function New-TvDbStruct() {
     Get-TvDbDatabase
-    New-Item tvdb:/Series -id integer primary key -title text -status text -watching boolean
-    New-Item tvdb:/Episodes -id integer primary key -seriesid integer -title text -SeasonNumber integer -EpisodeNumber integer -FirstAired text -watched boolean
+    New-Item tvdb:/Series `
+        -id integer primary key `
+        -title text `
+        -status text `
+        -watching boolean
+
+    New-Item tvdb:/Episodes `
+        -id integer primary key `
+        -seriesid integer `
+        -title text `
+        -SeasonNumber integer `
+        -EpisodeNumber integer `
+        -FirstAired text `
+        -watched boolean
 }
 
 #.Synopsis
@@ -269,14 +323,15 @@ function Remove-TvShow() {
         [parameter(Mandatory=$true, HelpMessage="Id of the tv show to remove")]
         [int]$Id
     )
-    Remove-Item tvdb:\Episodes -filter ("seriesid=" + $Id)
-    Remove-Item ("tvdb:\Series\" + $Id)
+    Remove-Item tvdb:\Episodes -filter "seriesid=$Id"
+    Remove-Item "tvdb:\Series\$Id"
 }
 
 #.Synopsis
 #Renews all shows/series in the local database
 function Update-TvShowsAll() {
-        Get-ChildItem tvdb:\Series | ForEach-Object {
+        Get-ChildItem tvdb:\Series `
+        | ForEach-Object {
             Update-TvShow $_.id
         }
 }
@@ -289,7 +344,14 @@ function Update-TvShow($id) {
     $data = get-TvDbSeries -Id $id  -WithEpisodes $true
     if ($data -ne $null) {
         $data.Episode | ForEach-Object {
-            $h = @{ id = $_.id; seriesid = $_.seriesid; SeasonNumber = $_.SeasonNumber; title=$_.EpisodeName; EpisodeNumber=$_.EpisodeNumber; FirstAired=[string]$_.FirstAired }
+            $h = @{
+                id = $_.id;
+                seriesid = $_.seriesid;
+                SeasonNumber = $_.SeasonNumber;
+                title = $_.EpisodeName;
+                EpisodeNumber = $_.EpisodeNumber;
+                FirstAired = [string]$_.FirstAired
+            }
 
             if ((Test-Path ("tvdb:\Episodes\" + $_.id)) -eq $false) {
                 $h.watched = $false

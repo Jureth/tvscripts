@@ -6,19 +6,30 @@
 #Retreives TorrentApi token.
 function get-TorrentApiToken($force = $false) {
     #TorrentApi token expires in 15 minutes. We get new one in 13 minutes just to be sure
-    if ((Test-Path variable:script:TorrentApiTokenTime) -eq $false -or ((New-TimeSpan -Start $TorrentApiTokenTime -End (Get-Date)).TotalMinutes -gt 13) -or $force) {
-        Set-Variable -Name TorrentApiTokenTime -Value (Get-Date) -Scope Script -Visibility Private
+    if (
+        (Test-Path variable:script:TorrentApiTokenTime) -eq $false `
+        -or ((New-TimeSpan -Start $TorrentApiTokenTime -End (Get-Date)).TotalMinutes -gt 13) `
+        -or $force
+    ) {
+        Set-Variable `
+            -Name TorrentApiTokenTime `
+            -Value (Get-Date) `
+            -Scope Script `
+            -Visibility Private
         $app_token = "JrthPrivDownloader" # Get-Settings "TorrentApiAppToken"
         $response = (Invoke-WebRequest "https://torrentapi.org/pubapi_v2.php?app_id=$app_token&get_token=get_token").Content
         $token = (ConvertFrom-Json $response).token
         if (Test-Path variable:script:TorrentApiToken) {
             Remove-Variable -Name TorrentApiToken -Scope script -Force
         }
+        #There is no other way to make static vars
         Set-Variable -Name TorrentApiToken -Value $token -Scope script -Option ReadOnly
     }
     return $TorrentApiToken
 }
 
+#.Synopsis
+# Retreives magnet links for given episode
 function Get-TorrentLinks($tvdbid, $season, $episode, $category=41) {
     # category==41 - Series HD
     # category==18 - Series
@@ -48,17 +59,26 @@ function Out-uTorrent() {
         $webHost = Get-Settings "uTorrentHost"
         $webUser = Get-Settings "uTorrentUser"
         $webPass = Get-Settings "uTorrentPass"
-        $response = Invoke-WebRequest -Uri "http://$webHost/gui/token.html" -Headers @{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($webUser+":"+$webPass ))} -SessionVariable "session"
-        Remove-Variable 'webUser', 'webPass'
+        $response = Invoke-WebRequest `
+            -Uri "http://$webHost/gui/token.html" `
+            -Headers @{
+                "Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($webUser+":"+$webPass ))
+            } `
+            -SessionVariable "session"
+
+        Remove-Variable 'webUser', 'webPass' #not needed in the process block
+
         if ($response.statusCode -eq 200) {
             $token = $response.ParsedHtml.getElementById("token").innerHtml
+            Remove-Variable 'response'
         }else {
             Write-Error "Gathering uTorrent token failed"
-            $false
+            $false #return false before break
             break
         }
     }
     Process {
+        #catch errors and return true/false
         try {
             (Invoke-WebRequest "http://$webHost/gui/?token=$token&action=add-url&s=$Magnet" -WebSession $session).StatusCode -eq 200
         }catch {

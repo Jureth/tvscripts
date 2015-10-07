@@ -37,7 +37,13 @@ function Create-UpdateJob() {
 
     Register-ScheduledJob `
         -Name UpdateEpisodes `
-        -Trigger (New-JobTrigger -Once -At (Get-Date -Hour 11 -Minute 0 -Second 0 -Millisecond 0) -RepeatIndefinitely -RepetitionInterval (New-TimeSpan -Hours 12)) `
+        -Trigger (
+            New-JobTrigger `
+                -Once `
+                -At (Get-Date -Hour 11 -Minute 0 -Second 0 -Millisecond 0) `
+                -RepeatIndefinitely `
+                -RepetitionInterval (New-TimeSpan -Hours 12) `
+            ) `
         -ScriptBlock $script `
         -ScheduledJobOption (New-ScheduledJobOption -WakeToRun -MultipleInstancePolicy StopExisting) `
         -InitializationScript ([scriptblock]::Create(". $PSScriptRoot\core.ps1")) #add some spaghetti to preresolve $PSScriptRoot variable
@@ -53,7 +59,11 @@ function Create-DownloadJob() {
     }
     Register-ScheduledJob `
         -Name DownloadEpisodes `
-        -Trigger (New-JobTrigger -Daily -At (Get-Date -Hour 13 -Minute 0 -Second 0 -Millisecond 0)) `
+        -Trigger (
+            New-JobTrigger `
+                -Daily `
+                -At (Get-Date -Hour 13 -Minute 0 -Second 0 -Millisecond 0) `
+            ) `
         -ScriptBlock $script `
         -ScheduledJobOption (New-ScheduledJobOption -WakeToRun -MultipleInstancePolicy Queue) `
         -InitializationScript ([scriptblock]::Create(". $PSScriptRoot\core.ps1"))
