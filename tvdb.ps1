@@ -330,34 +330,36 @@ function Remove-TvShow() {
 #.Synopsis
 #Renews all shows/series in the local database
 function Update-TvShowsAll() {
-        Get-ChildItem tvdb:\Series `
-        | ForEach-Object {
-            Update-TvShow $_.id
-        }
+    Get-ChildItem tvdb:\Series `
+    | Update-TvShow
 }
 
 #.Synopsis
 #Update the single show/series data
-#.Parameter id
-#Id of the show
-function Update-TvShow($id) {
-    $data = get-TvDbSeries -Id $id  -WithEpisodes $true
-    if ($data -ne $null) {
-        $data.Episode | ForEach-Object {
-            $h = @{
-                id = $_.id;
-                seriesid = $_.seriesid;
-                SeasonNumber = $_.SeasonNumber;
-                title = $_.EpisodeName;
-                EpisodeNumber = $_.EpisodeNumber;
-                FirstAired = [string]$_.FirstAired
-            }
+function Update-TvShow() {
+    param(
+        [parameter(Mandatory=$true, HelpMessage="TvShow Id", ValueFromPipelineByPropertyName=$true)]
+        [int[]]$id
+    )
+    Process {
+        $data = get-TvDbSeries -Id $id  -WithEpisodes $true
+        if ($data -ne $null) {
+            $data.Episode | ForEach-Object {
+                $h = @{
+                    id = $_.id;
+                    seriesid = $_.seriesid;
+                    SeasonNumber = $_.SeasonNumber;
+                    title = $_.EpisodeName;
+                    EpisodeNumber = $_.EpisodeNumber;
+                    FirstAired = [string]$_.FirstAired
+                }
 
-            if ((Test-Path ("tvdb:\Episodes\" + $_.id)) -eq $false) {
-                $h.watched = $false
-                New-Item -Path tvdb:\Episodes -Value $h
-            } else {
-                Set-Item -Path ("tvdb:\Episodes\" + $_.id) -Value $h
+                if ((Test-Path ("tvdb:\Episodes\" + $_.id)) -eq $false) {
+                    $h.watched = $false
+                    New-Item -Path tvdb:\Episodes -Value $h
+                } else {
+                    Set-Item -Path ("tvdb:\Episodes\" + $_.id) -Value $h
+                }
             }
         }
     }

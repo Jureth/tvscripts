@@ -88,33 +88,44 @@ function Out-uTorrent() {
 }
 
 #.Synopsis
-#Search and download episode
-#.Parameter Id
-#Tv Show id
-#.Parameter season
-#Season number
-#.Parameter episode
-#Episode number
-function Download-Episode($Id, $season, $episode) {
-    #we need an array even if there was no data or just one record
-    $links = [array](Get-TorrentLinks $Id $season $episode)
-    if ($links.count -ge 1) {
-        $1080 = $links | Where-Object { $_.filename -like "*1080*" }
-        if ($1080 -ne $null) {
-            $result = Out-uTorrent $1080[0].download
-        }else {
-            $result = Out-uTorrent $links[0].download
+#Search and download an episode
+function Download-Episode() {
+    param (
+        [parameter(ParameterSetName="byId", Mandatory=$true, HelpMessage="TvShow Id", Position=0)]
+        [int]$Id,
+        [parameter(ParameterSetName="byId", Mandatory=$true, HelpMessage="Season number", Position=1)]
+        [int]$Season,
+        [parameter(ParameterSetName="byId", Mandatory=$true, HelpMessage="Episode number", Position=2)]
+        [int]$Episode,
+        [parameter(ParameterSetName="byObject", Mandatory=$true, HelpMessage="Episode record", ValueFromPipeline=$true)]
+        [System.Data.DataRow[]]$InputObject
+    )
+    Process {
+        if ($PSCmdlet.ParameterSetName -eq "byObject") {
+            $Id = $InputObject.seriesid
+            $Season = $InputObject.seasonNumber
+            $Episode = $InputObject.episodeNumber
         }
-    }elseif($links.count -eq 0) {
-        #try another one
-        $links = Get-TorrentLinks $Id $season $episode 18 #not HD
-        if ($links.count -gt 0) {
-            $result = Out-uTorrent $links[0].download
-        }else {
-            Write-Warning "No data for show $Id season $season episode $episode was found"
+        #we need an array even if there was no data or just one record
+        $links = [array](Get-TorrentLinks $Id $season $episode)
+        if ($links.count -ge 1) {
+            $1080 = $links | Where-Object { $_.filename -like "*1080*" }
+            if ($1080 -ne $null) {
+                $result = Out-uTorrent $1080[0].download
+            }else {
+                $result = Out-uTorrent $links[0].download
+            }
+        }elseif($links.count -eq 0) {
+            #try another one
+            $links = [array](Get-TorrentLinks $Id $season $episode 18) #not HD
+            if ($links.count -gt 0) {
+                $result = Out-uTorrent $links[0].download
+            }else {
+                Write-Warning "No data for show $Id season $season episode $episode was found"
+            }
         }
-    }
-    if ($result) {
-        Set-Watched -Id $Id -Season $season -Episode $episode
+        if ($result) {
+            Set-Watched -Id $Id -Season $season -Episode $episode
+        }
     }
 }

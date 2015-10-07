@@ -53,9 +53,9 @@ function Create-UpdateJob() {
 #Creates a scheduled task to download new episodes
 function Create-DownloadJob() {
     $script = {
-        Get-ChildItem tvdb:\Episodes -filter "watched<>1" | 
-        Where-Object { $_.FirstAired -ne "" -and [DateTime]::Now.CompareTo(([DateTime]$_.FirstAired).AddDays(1)) -ge 0 } | 
-        ForEach-Object { Download-Episode -Id $_.seriesid -Season $_.SeasonNumber -Episode $_.EpisodeNumber }
+        Get-ChildItem tvdb:\Episodes -filter "watched<>1" `
+        | Where-Object { $_.FirstAired -ne "" -and [DateTime]::Now.CompareTo(([DateTime]$_.FirstAired).AddDays(1)) -ge 0 } `
+        | Download-Episode
     }
     Register-ScheduledJob `
         -Name DownloadEpisodes `
