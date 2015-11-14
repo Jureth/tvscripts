@@ -65,13 +65,12 @@ Function Add-TvDbSeries() {
             $Id = $possibilities.id
         }
     }
-    Get-TvDbDatabase
     $data = Get-TvDbSeries -Id $Id  -WithEpisodes $true
     if ($data -ne $null) {
         #Store the show
         $data.Series `
         | Where-Object {
-            (Test-Path ("tvdb:\Series\" + $_.id)) -eq $false
+            (Test-TvShowExists $_.id) -eq $false
         } `
         | Select-Object `
             "id", `
@@ -84,7 +83,7 @@ Function Add-TvDbSeries() {
                 Name="watching";
                 Expression={ $true }
             } `
-        | New-Item tvdb:\Series `
+        | New-SqliteRow "series" `
         | Out-Null
 
         #store episodes
@@ -110,11 +109,11 @@ Function Store-TvDbEpisode() {
             EpisodeNumber = $episode.EpisodeNumber;
             FirstAired = [string]$episode.FirstAired
         }
-        if ((Test-Path ("tvdb:\Episodes\" + $episode.id)) -eq $false) {
+        if ((Test-TvShowEpisodeExists $episode.id) -eq $false) {
             $data.watched = $false
-            New-Item -Path tvdb:\Episodes -Value $data | Out-Null
+            New-SqliteRow "episodes" $data | Out-Null
         } else {
-            Set-Item -Path ("tvdb:\Episodes\" + $episode.id) -Value $data |Out-Null
+            Set-SqliteRow "episodes" $data @{id=$episode.id} |Out-Null
         }
     }
 }
@@ -142,33 +141,14 @@ function Set-Watched() {
         Write-Warning "Show not found"
         return
     }
-
-    $filter = "seriesid = '$Id'"
+    $filter = @{ seriesid =$Id }
     if ($Season -gt -1) {
-        $filter += " and SeasonNumber=$Season"
+        $filter.SeasonNumber = $Season
     }
     if ($Episode -gt -1) {
-        $filter += " and EpisodeNumber=$Episode"
+        $filter.EpisodeNumber = $Episode
     }
-    Set-Item tvdb:\Episodes `
-        -Filter $filter `
-        -Value @{ watched=$Value }
-}
-
-#.Synopsis
-#Initializes local database
-Function Get-TvDbDatabase() {
-    if ((Test-Path tvdb:) -eq $true) {
-        return 
-    }
-    Import-Module Sqlite
-    $file = Get-TvDbDataPath "database.sqlite"
-    New-PSDrive `
-        -name tvdb `
-        -PSProvider SQLite `
-        -root "Data Source=$file" `
-        -Scope Global `
-    | Out-Null
+    Set-SqliteRow "episodes" @{ watched=$Value } $filter
 }
 
 #.Synopsis
@@ -281,7 +261,7 @@ function Update-TvDbSeries() {
                 -PercentComplete (($i / $count)  * 100);
 
             $i++;
-            if((Test-Path tvdb:\Series\$_.Series) -eq $true) {
+            if((Test-TvShowExists $_.Series) -eq $true) {
                 $episode = (Get-TvDbEpisode $_.id).Data.Episode
                 Store-TvDbEpisode $episode
             }
@@ -289,48 +269,9 @@ function Update-TvDbSeries() {
 }
 
 #.Synopsis
-#Wrapper for searching a tvshow by title from the local database
-#.Parameter title
-#Title of the tvshow to search
-function Search-TvShow($title) {
-    return Get-ChildItem tvdb:\Series -Filter "title='$title'"
-}
-
-#.Synopsis
-# Re-initialize database structure. Destroys all current data
-Function New-TvDbStruct() {
-    Get-TvDbDatabase
-    New-Item tvdb:/Series `
-        -id integer primary key `
-        -title text `
-        -status text `
-        -watching boolean
-
-    New-Item tvdb:/Episodes `
-        -id integer primary key `
-        -seriesid integer `
-        -title text `
-        -SeasonNumber integer `
-        -EpisodeNumber integer `
-        -FirstAired text `
-        -watched boolean
-}
-
-#.Synopsis
-#Removes the tvshow and all episodes from the local database
-function Remove-TvShow() {
-    param(
-        [parameter(Mandatory=$true, HelpMessage="Id of the tv show to remove")]
-        [int]$Id
-    )
-    Remove-Item tvdb:\Episodes -filter "seriesid=$Id"
-    Remove-Item "tvdb:\Series\$Id"
-}
-
-#.Synopsis
 #Renews all shows/series in the local database
 function Update-TvShowsAll() {
-    Get-ChildItem tvdb:\Series `
+    Get-AllTvShows `
     | Update-TvShow
 }
 
@@ -339,7 +280,7 @@ function Update-TvShowsAll() {
 function Update-TvShow() {
     param(
         [parameter(Mandatory=$true, HelpMessage="TvShow Id", ValueFromPipelineByPropertyName=$true)]
-        [int[]]$id
+        [int]$id
     )
     Process {
         $data = get-TvDbSeries -Id $id  -WithEpisodes $true
@@ -353,14 +294,62 @@ function Update-TvShow() {
                     EpisodeNumber = $_.EpisodeNumber;
                     FirstAired = [string]$_.FirstAired
                 }
-
-                if ((Test-Path ("tvdb:\Episodes\" + $_.id)) -eq $false) {
+                
+                if ((Test-TvShowEpisodeExists $_.id) -eq $false) {
                     $h.watched = $false
-                    New-Item -Path tvdb:\Episodes -Value $h
+                    New-SqliteRow "episodes" $h
                 } else {
-                    Set-Item -Path ("tvdb:\Episodes\" + $_.id) -Value $h
+                    Set-SqliteRow "episodes" $h @{ id=$_.id}
                 }
             }
         }
     }
+}
+
+
+#ORM functions 
+
+function Get-TvShow($id) {
+    Execute-SqliteQuery "SELECT * FROM series WHERE id = @id" @{'@id'=$id}
+}
+
+function Get-AllTvShows() {
+    Execute-SqliteQuery "SELECT * FROM series"
+}
+
+function Get-Episode($id) {
+    Execute-SqliteQuery "SELECT * FROM episodes WHERE id = @id" @{'@id'=$id}
+}
+
+function Get-TvShowEpisodes($id) {
+    Execute-SqliteQuery "SELECT * FROM episodes WHERE seriesid = @id" @{'@id'=$id }
+}
+
+
+#.Synopsis
+#Wrapper for searching a tvshow by title from the local database
+#.Parameter title
+#Title of the tvshow to search
+function Search-TvShow($title) {
+    return Execute-SqliteQuery "SELECT * FROM series WHERE title LIKE @title" @{'@title'=$title}
+}
+
+#.Synopsis
+#Removes the tvshow and all episodes from the local database
+function Remove-TvShow() {
+    param(
+        [parameter(Mandatory=$true, HelpMessage="Id of the tv show to remove")]
+        [int]$Id
+    )
+    Execute-SqliteCommand "DELETE FROM episodes WHERE seriesid=@id" @{'@id'=$Id} | Out-Null
+    Execute-SqliteCommand "DELETE FROM series WHERE id=@id" @{'@id'=$Id} | Out-Null
+}
+
+function Test-TvShowExists($id) {
+    #Rows[0][0] - first column of the first row
+    return 0 -lt (Execute-SqliteQuery "SELECT COUNT(*) FROM series WHERE id=@id" @{ id=$id })[0][0]
+}
+
+function Test-TvShowEpisodeExists($id) {
+    return 0 -lt (Execute-SqliteQuery "SELECT COUNT(*) FROM episodes WHERE id=@id" @{ id=$id })[0][0]
 }

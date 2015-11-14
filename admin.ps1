@@ -27,7 +27,7 @@ function Create-UpdateJob() {
         [xml]$response = Download-TvDb "$api_key/updates/$file"
         if ($response.Data.Episode.Count -gt 0) {
             $response.Data.Episode | ForEach-Object {
-                if((Test-Path tvdb:\Series\$_.Series) -eq $true) {
+                if((Test-TvShowExists $_.Series) -eq $true) {
                     Store-TvDbEpisode (Get-TvDbEpisode $_.id).Data.Episode
                 }
             }
@@ -53,8 +53,9 @@ function Create-UpdateJob() {
 #Creates a scheduled task to download new episodes
 function Create-DownloadJob() {
     $script = {
-        Get-ChildItem tvdb:\Episodes -filter "watched<>1" `
-        | Where-Object { $_.FirstAired -ne "" -and [DateTime]::Now.CompareTo(([DateTime]$_.FirstAired).AddDays(1)) -ge 0 } `
+        Execute-SqliteCommand `
+            "SELECT * FROM episodes WHERE watched<>1 AND CAST(strftime('%s', FirstAired) AS INTEGER) <= @border" `
+            @{ border=(Get-UnixTime ([DateTime]::Now.AddDays(-1))) } `
         | Download-Episode
     }
     Register-ScheduledJob `
@@ -67,4 +68,27 @@ function Create-DownloadJob() {
         -ScriptBlock $script `
         -ScheduledJobOption (New-ScheduledJobOption -WakeToRun -MultipleInstancePolicy Queue) `
         -InitializationScript ([scriptblock]::Create(". $PSScriptRoot\core.ps1"))
+}
+
+
+#.Synopsis
+# Re-initialize database structure. Destroys all current data
+Function New-TvDbStruct() {
+    return
+    #todo rewrite to sqlite create
+    Get-TvDbDatabase
+    New-Item tvdb:/Series `
+        -id integer primary key `
+        -title text `
+        -status text `
+        -watching boolean
+
+    New-Item tvdb:/Episodes `
+        -id integer primary key `
+        -seriesid integer `
+        -title text `
+        -SeasonNumber integer `
+        -EpisodeNumber integer `
+        -FirstAired text `
+        -watched boolean
 }

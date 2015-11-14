@@ -80,7 +80,7 @@ function Out-uTorrent() {
     Process {
         #catch errors and return true/false
         try {
-            (Invoke-WebRequest "http://$webHost/gui/?token=$token&action=add-url&s=$Magnet" -WebSession $session).StatusCode -eq 200
+            (Invoke-WebRequest "http://$webHost/gui/?token=$token&action=add-url&s=$Magnet&download_dir=1&path=" -WebSession $session).StatusCode -eq 200
         }catch {
             $false
         }

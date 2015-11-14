@@ -42,9 +42,13 @@ Function Set-Settings($name, $value) {
     Set-ItemProperty -Path "HKCU:\Software\Jureth\tvParser" -Name $name -Value $value
 }
 
+Function Get-UnixTime($date) {
+    [Math]::Floor([decimal](New-TimeSpan -Start (Get-Date -Date "01/01/1970") -End ($date)).TotalSeconds)
+}
+
 #####################################################################
 # Initialization
 #####################################################################
 . ($PSScriptRoot + "/tvdb.ps1")
 . ($PSScriptRoot + "/torrentapi.ps1")
-Get-TvDbDatabase
+Open-SqliteConnection (Get-TvDbDataPath "database.sqlite") | Out-Null
