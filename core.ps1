@@ -49,6 +49,7 @@ Function Get-UnixTime($date) {
 #####################################################################
 # Initialization
 #####################################################################
+. ($PSScriptRoot + "/sqlite.ps1")
 . ($PSScriptRoot + "/tvdb.ps1")
 . ($PSScriptRoot + "/torrentapi.ps1")
 Open-SqliteConnection (Get-TvDbDataPath "database.sqlite") | Out-Null
